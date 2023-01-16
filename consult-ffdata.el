@@ -82,7 +82,7 @@ If FORCE-UPDATE? is non-nil, force update database and cache before searching."
 	       :prompt "Firefox history: "
 	       :category 'bookmark
 	       :history 'consult-ffdata--history-firefox-history)))
-    (browse-url (car (split-string name)))))
+    (browse-url (car (last (split-string name) 2)))))
 
 (provide 'consult-ffdata)
 
