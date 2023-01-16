@@ -35,8 +35,6 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'ivy)
-(require 'counsel)
 (require 'emacsql-compiler)
 (require 'org-faces)                    ;For face `org-date'
 
@@ -67,6 +65,13 @@ We try to detect it on *nix system. If you're using Windows/Mac or
 auto-detection don't work for you, you need to specify it manually."
   :type '(choice (const :tag "Unset" nil)
           string))
+
+(defcustom counsel-ffdata-url-truncate-length 45
+  "The length to truncate bookmark or history urls.
+
+If NIL, full url will be shown."
+  :type '(choice (const :tag "Unset" nil)
+		 number))
 
 ;;; Database Access
 
@@ -128,7 +133,8 @@ hash cache.
 When FORCE-UPDATE? is non-nil, force update database and cache before preparing
 candidates.
 "
-  (counsel-require-program "sqlite3")
+  (unless (executable-find "sqlite3")
+    (error "Required program sqlite3 not found"))
   (counsel-ffdata--ensure-db! force-update?)
   (or
    (if force-update? nil (gethash caller counsel-ffdata--cache nil))
@@ -151,101 +157,27 @@ candidates.
              (cl-callf2 mapcar transformer result))
            (setf (gethash caller counsel-ffdata--cache) result)))))))
 
-(defun counsel-ffdata--history-cands-transformer (cands)
-  "Transform raw CANDS to ivy compatible candidates."
-  (pcase-let* (((and whole (let `(,title ,url ,date-in-ms) whole))
-                cands)
-               (date (/ (string-to-number date-in-ms) 1000000))
-               (readable-date (format-time-string "%Y-%m-%d %H:%M %a" date)))
-    ;; HACK: Use text property to carry original source
-    ;; Useful for display transformer.
-    (cons (propertize (format "%s %s %s"
-                              title
-                              (propertize url 'face 'link)
-                              (propertize readable-date 'face 'org-date))
-                      'counsel-ffdata-orig-source (list title url readable-date))
-          whole)))
-
 ;;; Display transformer
 
 (defun counsel-ffdata--history-display-transformer (text)
   "Transform TEXT to real displayed text."
-  (pcase-let ((`(,title ,url ,readable-date)
-               (get-text-property 0 'counsel-ffdata-orig-source text)))
+  (pcase-let ((`(,title ,url ,readable-date) text))
     (format "%s %s %s"
             title
-            (propertize (truncate-string-to-width url 25 nil nil "...")
-                        'face 'link)
+            (propertize
+	     (truncate-string-to-width url counsel-ffdata-url-truncate-length nil nil "...")
+             'face 'link)
             (propertize readable-date 'face 'org-date))))
 
 (defun counsel-ffdata--bookmarks-display-transformer (text)
   "Transform TEXT to real displayed text."
-  (pcase-let ((`(,title ,url)
-               (get-text-property 0 'counsel-ffdata-orig-source text)))
+  (pcase-let ((`(,title ,url) text))
     (format "%s %s"
             title
-            (propertize (truncate-string-to-width url 25 nil nil "...")
-                        'face 'link))))
-
-;;; Interactive functions
-
-;;;###autoload
-(defun counsel-ffdata-firefox-bookmarks (&optional force-update?)
-  "Search your Firefox bookmarks.
-
-If FORCE-UPDATE? is non-nil, force update database and cache before searching."
-  (interactive "P")
-  (ivy-read "Firefox Bookmarks: "
-            (counsel-ffdata--prepare-candidates!
-             :query-stmt [:select [bm:title p:url]
-                          :from (as moz_bookmarks bm)
-                          :inner-join (as moz_places p)
-                          :where (= bm:fk p:id)]
-             :force-update? force-update?
-             :caller 'counsel-ffdata-firefox-bookmarks
-             :transformer (pcase-lambda ((and whole (let `(,title ,url) whole)))
-                            ;; HACK: Use text property to carry original source
-                            ;; Useful for display transformer.
-                            (cons (propertize (format "%s %s" title url)
-                                              'counsel-ffdata-orig-source whole)
-                                  whole)))
-            :history 'counsel-ffdata-firefox-bookmarks
-            :action (lambda (it) (browse-url (cl-third it)))
-            :caller 'counsel-ffdata-firefox-bookmarks
-            :require-match t))
-
-;;;###autoload
-(defun counsel-ffdata-firefox-history (&optional force-update?)
-  "Search your Firefox history.
-
-If FORCE-UPDATE? is non-nil, force update database and cache before searching."
-  (interactive "P")
-  (ivy-read "Firefox History: "
-            (counsel-ffdata--prepare-candidates!
-             :query-stmt [:select [p:title p:url h:visit_date]
-                          :from (as moz_historyvisits h)
-                          :inner-join (as moz_places p)
-                          :where (= h:place_id p:id)
-                          :order-by (desc h:visit_date)]
-             :force-update? force-update?
-             :caller 'counsel-ffdata-firefox-history
-             :transformer #'counsel-ffdata--history-cands-transformer)
-            :history 'counsel-ffdata-firefox-history
-            :action (lambda (cand) (browse-url (cl-third cand)))
-            :caller 'counsel-ffdata-firefox-history
-            :require-match t))
+            (propertize
+	     (truncate-string-to-width url counsel-ffdata-url-truncate-length nil nil "...")
+             'face 'link))))
 
 (provide 'counsel-ffdata)
-
-(ivy-set-display-transformer #'counsel-ffdata-firefox-history
-                             #'counsel-ffdata--history-display-transformer)
-
-(ivy-set-display-transformer #'counsel-ffdata-firefox-bookmarks
-                             #'counsel-ffdata--bookmarks-display-transformer)
-
-(dolist (it '(counsel-ffdata-firefox-history
-              counsel-ffdata-firefox-bookmarks))
-  (ivy-set-actions it
-                   '(("E" (lambda (it) (eww (cl-third it))) "Open with EWW"))))
 
 ;;; counsel-ffdata.el ends here
