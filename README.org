@@ -1,5 +1,9 @@
 #+TITLE: Access your Firefox bookmarks and history with ivy interface
 
+This is a fork of [[https://github.com/cireu/counsel-ffdata][cireu/counsel-ffdata]], which uses ~consult~ instead
+of ~ivy~ to access Firefox bookmarks and history. Below are
+introduction for the orignal ~counsel-ffdata~.
+
 [[http://melpa.org/#/counsel-ffdata][file:http://melpa.org/packages/counsel-ffdata-badge.svg]]
 
 * Introduction
